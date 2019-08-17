@@ -63,6 +63,10 @@ struct ImDrawVertAllegro
     ALLEGRO_COLOR col;
 };
 
+// Forward Declarations
+static void ImGui_ImplAllegro5_InitPlatformInterface(ALLEGRO_DISPLAY* display);
+static void ImGui_ImplAllegro5_ShutdownPlatformInterface();
+
 static void ImGui_ImplAllegro5_SetupRenderState(ImDrawData* draw_data)
 {
     // Setup blending
@@ -255,15 +259,17 @@ bool ImGui_ImplAllegro5_Init(ALLEGRO_DISPLAY* display)
     ImGuiIO& io = ImGui::GetIO();
     io.BackendFlags |= ImGuiBackendFlags_HasMouseCursors;       // We can honor GetMouseCursor() values (optional)
     io.BackendPlatformName = io.BackendRendererName = "imgui_impl_allegro5";
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.BackendFlags |= ImGuiBackendFlags_PlatformHasViewports;
 
     // Create custom vertex declaration.
     // Unfortunately Allegro doesn't support 32-bits packed colors so we have to convert them to 4 floats.
     // We still use a custom declaration to use 'ALLEGRO_PRIM_TEX_COORD' instead of 'ALLEGRO_PRIM_TEX_COORD_PIXEL' else we can't do a reliable conversion.
     ALLEGRO_VERTEX_ELEMENT elems[] =
     {
-        { ALLEGRO_PRIM_POSITION, ALLEGRO_PRIM_FLOAT_2, IM_OFFSETOF(ImDrawVertAllegro, pos) },
-        { ALLEGRO_PRIM_TEX_COORD, ALLEGRO_PRIM_FLOAT_2, IM_OFFSETOF(ImDrawVertAllegro, uv) },
-        { ALLEGRO_PRIM_COLOR_ATTR, 0, IM_OFFSETOF(ImDrawVertAllegro, col) },
+        { ALLEGRO_PRIM_POSITION, ALLEGRO_PRIM_FLOAT_2, (int)IM_OFFSETOF(ImDrawVertAllegro, pos) },
+        { ALLEGRO_PRIM_TEX_COORD, ALLEGRO_PRIM_FLOAT_2, (int)IM_OFFSETOF(ImDrawVertAllegro, uv) },
+        { ALLEGRO_PRIM_COLOR_ATTR, 0, (int)IM_OFFSETOF(ImDrawVertAllegro, col) },
         { 0, 0, 0 }
     };
     g_VertexDecl = al_create_vertex_decl(elems, sizeof(ImDrawVertAllegro));
@@ -297,6 +303,9 @@ bool ImGui_ImplAllegro5_Init(ALLEGRO_DISPLAY* display)
     io.GetClipboardTextFn = ImGui_ImplAllegro5_GetClipboardText;
     io.ClipboardUserData = NULL;
 #endif
+
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        ImGui_ImplAllegro5_InitPlatformInterface(display);
 
     return true;
 }
@@ -422,4 +431,357 @@ void ImGui_ImplAllegro5_NewFrame()
     io.KeySuper = al_key_down(&keys, ALLEGRO_KEY_LWIN) || al_key_down(&keys, ALLEGRO_KEY_RWIN);
 
     ImGui_ImplAllegro5_UpdateMouseCursor();
+}
+
+void ImGui_ImplAllegro5_NewFrame(ALLEGRO_DISPLAY* display)
+{
+    ImGuiIO& io = ImGui::GetIO();
+    IM_ASSERT(io.Fonts->IsBuilt() && "Font atlas not built! It is generally built by the renderer back-end. Missing call to renderer _NewFrame() function? e.g. ImGui_ImplOpenGL3_NewFrame().");
+
+    // Setup display size (every frame to accommodate for window resizing)
+    int w, h;
+    int display_w, display_h;
+    w = al_get_display_width(display);
+    h = al_get_display_height(display);
+
+    //SDL_GL_GetDrawableSize(window, &display_w, &display_h);
+    io.DisplaySize = ImVec2((float)w, (float)h);
+    if (w > 0 && h > 0)
+        io.DisplayFramebufferScale = ImVec2((float)w / w, (float)h / h);
+
+    /*
+    // Setup time step (we don't use SDL_GetTicks() because it is using millisecond resolution)
+    static Uint64 frequency = SDL_GetPerformanceFrequency();
+    Uint64 current_time = SDL_GetPerformanceCounter();
+    io.DeltaTime = g_Time > 0 ? (float)((double)(current_time - g_Time) / frequency) : (float)(1.0f / 60.0f);
+    g_Time = current_time;
+
+    ImGui_ImplSDL2_UpdateMousePosAndButtons();
+    ImGui_ImplSDL2_UpdateMouseCursor();
+
+    // Update game controllers (if enabled and available)
+    ImGui_ImplSDL2_UpdateGamepads();
+    */
+}
+
+//--------------------------------------------------------------------------------------------------------
+// MULTI-VIEWPORT / PLATFORM INTERFACE SUPPORT
+// This is an _advanced_ and _optional_ feature, allowing the back-end to create and handle multiple viewports simultaneously.
+// If you are new to dear imgui or creating a new binding for dear imgui, it is recommended that you completely ignore this section first..
+//--------------------------------------------------------------------------------------------------------
+
+#define IMGUI_ALLEGRO_MAX_VIEWPORTS 256
+static ImGuiViewport *ImGuiAllegroViewports[IMGUI_ALLEGRO_MAX_VIEWPORTS];
+
+struct ImGuiViewportDataAllegro5
+{
+    ALLEGRO_DISPLAY*    Display;
+    bool                WindowOwned;
+    bool                Focused;
+    bool                Minimized;
+
+    ImGuiViewportDataAllegro5() { Display = NULL; WindowOwned = false; }
+    ~ImGuiViewportDataAllegro5() { IM_ASSERT(Display == NULL); }
+};
+
+static void ImGui_ImplAllegro5_CreateWindow(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = IM_NEW(ImGuiViewportDataAllegro5)();
+    viewport->PlatformUserData = data;
+
+    ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    ImGuiViewportDataAllegro5* main_viewport_data = (ImGuiViewportDataAllegro5*)main_viewport->PlatformUserData;
+
+    // Share GL resources with main context
+    /*bool use_opengl = (main_viewport_data->GLContext != NULL);
+    SDL_GLContext backup_context = NULL;
+    if (use_opengl)
+    {
+        backup_context = SDL_GL_GetCurrentContext();
+        SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
+        SDL_GL_MakeCurrent(main_viewport_data->Window, main_viewport_data->GLContext);
+    }
+
+    Uint32 sdl_flags = 0;
+    sdl_flags |= use_opengl ? SDL_WINDOW_OPENGL : SDL_WINDOW_VULKAN;
+    sdl_flags |= SDL_GetWindowFlags(g_Window) & SDL_WINDOW_ALLOW_HIGHDPI;
+    sdl_flags |= SDL_WINDOW_HIDDEN;
+    sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? SDL_WINDOW_BORDERLESS : 0;
+    sdl_flags |= (viewport->Flags & ImGuiViewportFlags_NoDecoration) ? 0 : SDL_WINDOW_RESIZABLE;
+#if SDL_HAS_ALWAYS_ON_TOP
+    sdl_flags |= (viewport->Flags & ImGuiViewportFlags_TopMost) ? SDL_WINDOW_ALWAYS_ON_TOP : 0;
+#endif
+    */
+    //data->Window = SDL_CreateWindow("No Title Yet", (int)viewport->Pos.x, (int)viewport->Pos.y, (int)viewport->Size.x, (int)viewport->Size.y, sdl_flags);
+    data->Display = al_create_display(1280, 720);
+    data->WindowOwned = true;
+
+    //al_set_window_title(data->Display, "Test1");
+
+    /*
+    if (use_opengl)
+    {
+        data->GLContext = SDL_GL_CreateContext(data->Window);
+        SDL_GL_SetSwapInterval(0);
+    }
+    if (use_opengl && backup_context)
+        SDL_GL_MakeCurrent(data->Window, backup_context);
+    */
+
+    viewport->PlatformHandle = (void*)data->Display;
+
+#if defined(_WIN32)
+    viewport->PlatformHandleRaw = al_get_win_window_handle(data->Display);
+#endif
+
+    // Store viewport for lookup during certain callbacks
+    for(int i = 0; i < IMGUI_ALLEGRO_MAX_VIEWPORTS; i++)
+    {
+        if(ImGuiAllegroViewports[i] == NULL) {
+            ImGuiAllegroViewports[i] = viewport;
+            break;
+        }
+    }
+}
+
+static void ImGui_ImplAllegro5_DestroyWindow(ImGuiViewport* viewport)
+{
+    if (ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData)
+    {
+        if(data->Display && data->WindowOwned)
+            al_destroy_display(data->Display);
+
+        data->Display = NULL;
+        IM_DELETE(data);
+    }
+    viewport->PlatformUserData = viewport->PlatformHandle = NULL;
+}
+
+static void ImGui_ImplAllegro5_ShowWindow(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+
+#if defined(_WIN32)
+    HWND hwnd = (HWND)viewport->PlatformHandleRaw;
+
+    // TODO: Do we still need these in Allegro?
+    // SDL hack: Hide icon from task bar
+    // Note: SDL 2.0.6+ has a SDL_WINDOW_SKIP_TASKBAR flag which is supported under Windows but the way it create the window breaks our seamless transition.
+    if (viewport->Flags & ImGuiViewportFlags_NoTaskBarIcon)
+    {
+        LONG ex_style = ::GetWindowLong(hwnd, GWL_EXSTYLE);
+        ex_style &= ~WS_EX_APPWINDOW;
+        ex_style |= WS_EX_TOOLWINDOW;
+        ::SetWindowLong(hwnd, GWL_EXSTYLE, ex_style);
+    }
+
+    // SDL hack: SDL always activate/focus windows :/
+    if (viewport->Flags & ImGuiViewportFlags_NoFocusOnAppearing)
+    {
+        ::ShowWindow(hwnd, SW_SHOWNA);
+        return;
+    }
+#endif
+
+    //TODO: Allegro show window function?
+    //SDL_ShowWindow(data->Window);
+}
+
+static ImVec2 ImGui_ImplAllegro5_GetWindowPos(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    int x = 0, y = 0;
+    al_get_window_position(data->Display, &x, &y);
+    return ImVec2((float)x, (float)y);
+}
+
+static void ImGui_ImplAllegro5_SetWindowPos(ImGuiViewport* viewport, ImVec2 pos)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    al_set_window_position(data->Display, (int)pos.x, (int)pos.y);
+}
+
+static ImVec2 ImGui_ImplAllegro5_GetWindowSize(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    int w = 0, h = 0;
+    w = al_get_display_width(data->Display);
+    h = al_get_display_height(data->Display);
+    return ImVec2((float)w, (float)h);
+}
+
+static void ImGui_ImplAllegro5_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    al_resize_display(data->Display, (int)size.x, (int)size.y);
+}
+
+static void ImGui_ImplAllegro5_SetWindowTitle(ImGuiViewport* viewport, const char* title)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    al_set_window_title(data->Display, title);
+}
+
+/*
+#if SDL_HAS_WINDOW_ALPHA
+static void ImGui_ImplAllegro5_SetWindowAlpha(ImGuiViewport* viewport, float alpha)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    SDL_SetWindowOpacity(data->Window, alpha);
+}
+#endif
+*/
+
+static ImGuiViewport *ImGui_ImplAllegro5_FindViewport(ALLEGRO_DISPLAY *display) {
+    for(int i = 0; i < IMGUI_ALLEGRO_MAX_VIEWPORTS; i++)
+    {
+        if(ImGuiAllegroViewports[i] != NULL && ImGuiAllegroViewports[i]->PlatformHandle == display) {
+            return ImGuiAllegroViewports[i];
+        }
+    }
+    return NULL;
+}
+
+void ImGui_ImplAllegro5_HandleEvent(ALLEGRO_EVENT *ev) {
+    ImGuiViewport *viewport = ImGui_ImplAllegro5_FindViewport(ev->display.source);
+    if(NULL != viewport) {
+        ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+        switch(ev->type) {
+        case ALLEGRO_EVENT_DISPLAY_SWITCH_IN:
+            for(int i = 0; i < IMGUI_ALLEGRO_MAX_VIEWPORTS; i++)
+            {
+                if(NULL == ImGuiAllegroViewports[i]) break;
+                ((ImGuiViewportDataAllegro5*)ImGuiAllegroViewports[i]->PlatformUserData)->Focused = false;
+            }
+            data->Focused = true;
+            break;
+        }
+
+    }
+}
+
+static void ImGui_ImplAllegro5_SetWindowFocus(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    // TODO: Allegro method to set window focus
+    data->Focused = true;
+}
+
+static bool ImGui_ImplAllegro5_GetWindowFocus(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    return data->Focused;
+}
+
+static bool ImGui_ImplAllegro5_GetWindowMinimized(ImGuiViewport* viewport)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    // TODO: Allegro/platform methods to get minimized flag
+    return false;
+}
+
+static void ImGui_ImplAllegro5_RenderWindow(ImGuiViewport* viewport, void*)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+//al_draw_line(0, 0, 1000, 1000, al_map_rgb(0,0,0), 2);
+    al_set_target_bitmap(al_get_backbuffer(data->Display));
+
+}
+
+static void ImGui_ImplAllegro5_SwapBuffers(ImGuiViewport* viewport, void*)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    al_set_target_bitmap(al_get_backbuffer(data->Display));
+    al_flip_display();
+}
+
+// Vulkan support (the Vulkan renderer needs to call a platform-side support function to create the surface)
+// SDL is graceful enough to _not_ need <vulkan/vulkan.h> so we can safely include this.
+#if SDL_HAS_VULKAN
+#include <SDL_vulkan.h>
+static int ImGui_ImplAllegro5_CreateVkSurface(ImGuiViewport* viewport, ImU64 vk_instance, const void* vk_allocator, ImU64* out_vk_surface)
+{
+    ImGuiViewportDataAllegro5* data = (ImGuiViewportDataAllegro5*)viewport->PlatformUserData;
+    (void)vk_allocator;
+    SDL_bool ret = SDL_Vulkan_CreateSurface(data->Window, (VkInstance)vk_instance, (VkSurfaceKHR*)out_vk_surface);
+    return ret ? 0 : 1; // ret ? VK_SUCCESS : VK_NOT_READY
+}
+#endif // SDL_HAS_VULKAN
+
+// FIXME-PLATFORM: SDL doesn't have an event to notify the application of display/monitor changes
+static void ImGui_ImplAllegro5_UpdateMonitors()
+{
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    ALLEGRO_MONITOR_INFO al_monitor;
+    platform_io.Monitors.resize(0);
+    int display_count = al_get_num_video_adapters();
+    for (int n = 0; n < display_count; n++)
+    {
+        al_get_monitor_info(n, &al_monitor);
+
+        // Warning: the validity of monitor DPI information on Windows depends on the application DPI awareness settings, which generally needs to be set in the manifest or at runtime.
+        ImGuiPlatformMonitor monitor;
+
+        monitor.MainPos = monitor.WorkPos = ImVec2((float)al_monitor.x1, (float)al_monitor.y1);
+        monitor.MainSize = monitor.WorkSize = ImVec2((float)al_monitor.x2 - al_monitor.x1, (float)al_monitor.y2 - al_monitor.y1);
+/*
+#if SDL_HAS_USABLE_DISPLAY_BOUNDS
+        SDL_GetDisplayUsableBounds(n, &r);
+        monitor.WorkPos = ImVec2((float)r.x, (float)r.y);
+        monitor.WorkSize = ImVec2((float)r.w, (float)r.h);
+#endif
+#if SDL_HAS_PER_MONITOR_DPI
+        float dpi = 0.0f;
+        if (!SDL_GetDisplayDPI(n, &dpi, NULL, NULL))
+            monitor.DpiScale = dpi / 96.0f;
+#endif
+*/
+        platform_io.Monitors.push_back(monitor);
+    }
+}
+
+static void ImGui_ImplAllegro5_InitPlatformInterface(ALLEGRO_DISPLAY* display)
+{
+    // Register platform interface (will be coupled with a renderer interface)
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    platform_io.Platform_CreateWindow = ImGui_ImplAllegro5_CreateWindow;
+    platform_io.Platform_DestroyWindow = ImGui_ImplAllegro5_DestroyWindow;
+    platform_io.Platform_ShowWindow = ImGui_ImplAllegro5_ShowWindow;
+    platform_io.Platform_SetWindowPos = ImGui_ImplAllegro5_SetWindowPos;
+    platform_io.Platform_GetWindowPos = ImGui_ImplAllegro5_GetWindowPos;
+    platform_io.Platform_SetWindowSize = ImGui_ImplAllegro5_SetWindowSize;
+    platform_io.Platform_GetWindowSize = ImGui_ImplAllegro5_GetWindowSize;
+    platform_io.Platform_SetWindowFocus = ImGui_ImplAllegro5_SetWindowFocus;
+    platform_io.Platform_GetWindowFocus = ImGui_ImplAllegro5_GetWindowFocus;
+    platform_io.Platform_GetWindowMinimized = ImGui_ImplAllegro5_GetWindowMinimized;
+    platform_io.Platform_SetWindowTitle = ImGui_ImplAllegro5_SetWindowTitle;
+    platform_io.Platform_RenderWindow = ImGui_ImplAllegro5_RenderWindow;
+    platform_io.Platform_SwapBuffers = ImGui_ImplAllegro5_SwapBuffers;
+    /*
+#if SDL_HAS_WINDOW_ALPHA
+    platform_io.Platform_SetWindowAlpha = ImGui_ImplAllegro5_SetWindowAlpha;
+#endif
+#if SDL_HAS_VULKAN
+    platform_io.Platform_CreateVkSurface = ImGui_ImplAllegro5_CreateVkSurface;
+#endif
+    */
+    // Allegro5 by default doesn't pass mouse clicks to the application when the click focused a window. This is getting in the way of our interactions and we disable that behavior.
+#if SDL_HAS_MOUSE_FOCUS_CLICKTHROUGH
+    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
+#endif
+
+    ImGui_ImplAllegro5_UpdateMonitors();
+
+    // Register main window handle (which is owned by the main application, not by us)
+    ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    ImGuiViewportDataAllegro5* data = IM_NEW(ImGuiViewportDataAllegro5)();
+    data->Display = display;
+    data->WindowOwned = false;
+    main_viewport->PlatformUserData = data;
+    main_viewport->PlatformHandle = data->Display;
+    ImGuiAllegroViewports[0] = main_viewport;
+}
+
+static void ImGui_ImplAllegro5_ShutdownPlatformInterface()
+{
 }
