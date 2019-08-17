@@ -15,8 +15,10 @@ int main(int, char**)
     al_install_mouse();
     al_init_primitives_addon();
     al_set_new_display_flags(ALLEGRO_RESIZABLE);
+
     ALLEGRO_DISPLAY* display = al_create_display(1280, 720);
-    al_set_window_title(display, "Dear ImGui Allegro 5 example");
+    al_set_window_title(display, "Test1");
+
     ALLEGRO_EVENT_QUEUE* queue = al_create_event_queue();
     al_register_event_source(queue, al_get_display_event_source(display));
     al_register_event_source(queue, al_get_keyboard_event_source());
@@ -26,12 +28,28 @@ int main(int, char**)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;        // Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;       // Enable Keyboard Controls
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;         // Enable Multi-Viewport / Platform Windows
+    io.ConfigFlags |= ImGuiDockNodeFlags_PassthruCentralNode;
+    //io.ConfigViewportsNoAutoMerge = true;
+    //io.ConfigViewportsNoTaskBarIcon = true;
+    io.ConfigDockingWithShift = false;
+
 
     // Setup Dear ImGui style
     ImGui::StyleColorsDark();
     //ImGui::StyleColorsClassic();
+
+    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
 
     // Setup Platform/Renderer bindings
     ImGui_ImplAllegro5_Init(display);
@@ -55,6 +73,21 @@ int main(int, char**)
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    ALLEGRO_TIMER *timer = NULL;
+    timer = al_create_timer(1.0 / FPS);
+    if(!timer) {
+        fprintf(stderr, "failed to create timer!\n");
+        return -1;
+    }
+    al_register_event_source(queue, al_get_timer_event_source(timer));
+
+
+    al_start_timer(timer);
+
+    ALLEGRO_DISPLAY *current_display;
+    current_display = display;
+
+
     // Main loop
     bool running = true;
     while (running)
@@ -65,26 +98,58 @@ int main(int, char**)
         // - When io.WantCaptureKeyboard is true, do not dispatch keyboard input data to your main application.
         // Generally you may always pass all inputs to dear imgui, and hide them from your application based on those two flags.
         ALLEGRO_EVENT ev;
-        while (al_get_next_event(queue, &ev))
-        {
+        al_wait_for_event(queue, &ev);
+
+        ImGui_ImplAllegro5_HandleEvent(&ev);
+
+        //while (al_get_next_event(queue, &ev))
+        //{
             ImGui_ImplAllegro5_ProcessEvent(&ev);
             if (ev.type == ALLEGRO_EVENT_DISPLAY_CLOSE)
                 running = false;
             if (ev.type == ALLEGRO_EVENT_DISPLAY_RESIZE)
             {
                 ImGui_ImplAllegro5_InvalidateDeviceObjects();
-                al_acknowledge_resize(display);
+                al_acknowledge_resize(ev.display.source);
                 ImGui_ImplAllegro5_CreateDeviceObjects();
             }
-        }
+            if (ev.type == ALLEGRO_EVENT_DISPLAY_SWITCH_IN)
+            {
+                current_display = ev.display.source;
+            }
+        //}
 
         // Start the Dear ImGui frame
         ImGui_ImplAllegro5_NewFrame();
+        ImGui_ImplAllegro5_NewFrame(current_display);
         ImGui::NewFrame();
 
         // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
+        {
+            static float f = 0.0f;
+            static int counter = 0;
+
+            ImGui::Begin("TEST");                          // Create a window called "Hello, world!" and append into it.
+
+
+
+            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+            ImGui::Checkbox("Another Window", &show_another_window);
+
+            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
+            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+                counter++;
+            ImGui::SameLine();
+            ImGui::Text("counter = %d", counter);
+
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+            ImGui::End();
+        }
 
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
@@ -124,6 +189,13 @@ int main(int, char**)
         al_clear_to_color(al_map_rgba_f(clear_color.x, clear_color.y, clear_color.z, clear_color.w));
         ImGui_ImplAllegro5_RenderDrawData(ImGui::GetDrawData());
         al_flip_display();
+
+        // Update and Render additional Platform Windows
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
     }
 
     // Cleanup
