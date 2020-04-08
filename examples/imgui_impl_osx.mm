@@ -40,21 +40,21 @@ static bool           g_MouseCursorHidden = false;
 
 @property (nonatomic, strong) NSString *characters;
 
-- (void)setImePosX:(int)posX imePosY:(int)posY;
+- (void)setImePosX:(float)posX imePosY:(float)posY;
 
 - (void)updateImePosWithView:(NSView *)view;
 
 @end
 
 @implementation ImGui_TextInputClient {
-    int _posX;
-    int _posY;
+    float _posX;
+    float _posY;
     NSRect _imeRect;
 }
 
 #pragma mark - Public
 
-- (void)setImePosX:(int)posX imePosY:(int)posY
+- (void)setImePosX:(float)posX imePosY:(float)posY
 {
     _posX = posX;
     _posY = posY;
@@ -229,9 +229,9 @@ bool ImGui_ImplOSX_Init()
         strcpy(s_clipboard.Data, string_c);
         return s_clipboard.Data;
     };
-    io.ImeSetInputScreenPosFn = [](int x, int y) -> void
+    io.ImeSetInputScreenPosFn = [](float x, float y, float line_height) -> void
     {
-        [textInputClient() setImePosX:x imePosY:y];
+        [textInputClient() setImePosX:x imePosY:y + line_height];
     };
 
     return true;
