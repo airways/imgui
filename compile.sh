@@ -1,1 +1,0 @@
-clang -o imgui_demo imgui_demo.cpp imgui_draw.cpp imgui_widgets.cpp imgui.cpp main.mm examples/imgui_impl_osx.mm examples/imgui_impl_metal.mm -I"." -I"./examples" -std=c++17 -framework CoreFoundation -framework Cocoa -framework Metal -framework MetalKit -lstdc++ -fobjc-arc

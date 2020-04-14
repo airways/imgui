@@ -1,9 +1,43 @@
 #import <Cocoa/Cocoa.h>
 #import <MetalKit/MetalKit.h>
+#include <pthread.h>
 
 #include "imgui.h"
 #include "imgui_impl_osx.h"
 #include "imgui_impl_metal.h"
+#include "runtime.h"
+
+static pthread_mutex_t inMutex;
+static pthread_mutex_t outMutex;
+
+void macosResume(void)
+{
+    pthread_mutex_unlock(&outMutex);
+    pthread_mutex_lock(&inMutex);
+}
+
+static void* macosSwiftMainWrapper(void* userdata)
+{
+    macosSwiftMain();
+    return nullptr;
+}
+
+static void invokeMacosSwiftMain(void)
+{
+    static bool pthreadCreated;
+    if (!pthreadCreated)
+    {
+        static pthread_t swiftMainThread;
+        pthread_mutex_init(&inMutex, 0);
+        pthread_mutex_init(&outMutex, 0);
+        pthread_mutex_lock(&outMutex);
+        pthread_create(&swiftMainThread, 0, macosSwiftMainWrapper, 0);
+        pthreadCreated = true;
+    } else {
+        pthread_mutex_unlock(&inMutex);
+    }
+    pthread_mutex_lock(&outMutex);
+}
 
 // Renderer
 
@@ -32,8 +66,9 @@
         ImGui::CreateContext();
         ImGui::StyleColorsDark();
 
-        ImGuiIO &io = ImGui::GetIO();
-        io.Fonts->AddFontFromFileTTF("PingFang.ttc", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
+        // ImGuiIO &io = ImGui::GetIO();
+        // Better font support.
+        // io.Fonts->AddFontFromFileTTF("PingFang.ttc", 18.0f, nullptr, io.Fonts->GetGlyphRangesChineseFull());
         ImGui_ImplMetal_Init(_device);
     }
 
@@ -72,42 +107,7 @@
         ImGui_ImplOSX_NewFrame(view);
         ImGui::NewFrame();
 
-        // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
-
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
-
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
-
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
-        }
-
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
+        invokeMacosSwiftMain();
 
         // Rendering
         ImGui::Render();
@@ -262,7 +262,7 @@
 
 @end
 
-int main(int argc, const char * argv[])
+extern "C" int main(int argc, const char * argv[])
 {
     AppDelegate* const delegate = [AppDelegate new];
     [NSApplication sharedApplication].delegate = delegate;
