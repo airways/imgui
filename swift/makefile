@@ -1,6 +1,6 @@
-CCFLAGS := -std=c++14 -fobjc-arc -I".." -I"../examples" -I"./macos" $(CCFLAGS)
+CCFLAGS := -std=c++17 -fobjc-arc -I".." -I"../examples" -I"./macos" $(CCFLAGS)
 
-CPP_SRCS := ../imgui_demo.cpp ../imgui_draw.cpp ../imgui_widgets.cpp ../imgui.cpp cimgui.cpp
+CPP_SRCS := ../imgui_demo.cpp ../imgui_draw.cpp ../imgui_widgets.cpp ../imgui.cpp cimgui.cpp text.cpp
 OBJC_SRCS := macos/runtime.mm ../examples/imgui_impl_osx.mm ../examples/imgui_impl_metal.mm
 
 CPP_SRC_OBJS := $(patsubst %.cpp,%.o,$(CPP_SRCS))

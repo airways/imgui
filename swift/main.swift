@@ -5,20 +5,27 @@ let button = Button("Click me")
 let text = Text("Some Text")
 panel.add(subview: button)
 panel.add(subview: text)
+let childPanel = Panel("Child Panel")
+let childText = TextInput("Text")
+childText.multiline = true
+childPanel.add(subview: childText)
+panel.add(subview: childPanel)
 
-var onOffSwitch = false
-
+// This is the event-driven style.
 button.onClick = {
   let panel = Panel("Second Window")
   let text = Text("Some Text")
   panel.add(subview: text)
-  var counter = 0
-  text.text = "Counter \(counter)"
-  counter += 1
-  Gui.Do()
+  text.text = childText.text
+  childText.onTextChange = {
+    text.text = childText.text
+  }
 }
 
 /*
+// This is the polling style.
+var onOffSwitch = false
+
 while true {
   if button.didClick {
     if !onOffSwitch {

@@ -165,8 +165,7 @@ static void invokeMacosSwiftMain(void)
         abort();
     }
 
-    NSSize preferredContentSize = [self preferredContentSize];
-    self.view = [[MTKView alloc] initWithFrame:NSMakeRect(0, 0, preferredContentSize.width, preferredContentSize.height)
+    self.view = [[MTKView alloc] initWithFrame:NSMakeRect(0, 0, 800, 600)
                                         device:device];
 }
 
@@ -238,10 +237,6 @@ static void invokeMacosSwiftMain(void)
     ImGui_ImplOSX_HandleEvent(event, self.view);
 }
 
-- (NSSize)preferredContentSize {
-    return NSMakeSize(1280, 1280);
-}
-
 @end
 
 // AppDelegate
@@ -261,7 +256,8 @@ static void invokeMacosSwiftMain(void)
 - (void)applicationDidFinishLaunching:(NSNotification *)notification
 {
     ViewController* const viewController = [[ViewController alloc] initWithNibName:nil bundle:nil];
-    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1280, 1280)
+    NSRect screenRect = [NSScreen mainScreen].visibleFrame;
+    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect((screenRect.size.width - 800) / 2, (screenRect.size.height - 600) / 2, 800, 600)
                                           styleMask:NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskClosable | NSWindowStyleMaskTitled
                                             backing:NSBackingStoreBuffered
                                               defer:NO];

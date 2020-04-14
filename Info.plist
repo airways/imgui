@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>imgui_demo</string>
+	<string>main</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.imgui.example.apple-metal-macos</string>
 	<key>CFBundleInfoDictionaryVersion</key>
