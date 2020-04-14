@@ -10,18 +10,22 @@ OBJC_SRC_OBJS := $(patsubst %.mm,%.o,$(OBJC_SRCS))
 
 all: libimgui_macos.a
 
+Gui: Gui.o Gui.swiftmodule
+
 libimgui_macos.a: $(CPP_SRC_OBJS) $(OBJC_SRC_OBJS)
 	$(AR) rcs $@ $^
+
+Gui.swiftmodule: Gui.swift
+	swiftc -emit-module -module-name Gui Gui.swift -import-objc-header cimgui-bridging.h
+
+Gui.o: Gui.swift
+	swiftc -o Gui.o -module-name Gui -c Gui.swift -parse-as-library -import-objc-header cimgui-bridging.h
 
 %.o: %.cpp
 	$(CC) $< -o $@ -c $(CCFLAGS)
 
 %.o: %.mm
 	$(CC) $< -o $@ -c $(CCFLAGS)
-
-Gui:
-	swiftc -emit-module -module-name Gui Gui.swift -import-objc-header cimgui-bridging.h
-	swiftc -o Gui.o -module-name Gui -c Gui.swift -parse-as-library -import-objc-header cimgui-bridging.h
 
 clean:
 	rm -f *.o macos/*.o ../*.o ../examples/*.o *.swiftmodule *.swiftdoc *.swiftsourceinfo

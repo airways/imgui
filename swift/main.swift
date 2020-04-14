@@ -3,14 +3,24 @@ import Gui
 let panel = Panel("First Window")
 let button = Button("Click me")
 let text = Text("Some Text")
-panel.append(subview: button)
-panel.append(subview: text)
+panel.add(subview: button)
+panel.add(subview: text)
 
 var onOffSwitch = false
 
+button.onClick = {
+  let panel = Panel("Second Window")
+  let text = Text("Some Text")
+  panel.add(subview: text)
+  var counter = 0
+  text.text = "Counter \(counter)"
+  counter += 1
+  Gui.Do()
+}
+
+/*
 while true {
   if button.didClick {
-    button.size = Gui.Size(100, 28)
     if !onOffSwitch {
       text.text = "You clicked me!"
       onOffSwitch = true
@@ -21,3 +31,4 @@ while true {
   }
   Gui.Do()
 }
+*/

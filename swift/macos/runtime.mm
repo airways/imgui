@@ -16,9 +16,14 @@ void macosResume(void)
     pthread_mutex_lock(&inMutex);
 }
 
+extern "C" void Gui_Do(void);
+
 static void* macosSwiftMainWrapper(void* userdata)
 {
     macosSwiftMain();
+    for (;;) { // Save all. This will make sure the main function doesn't fall through.
+        Gui_Do();
+    }
     return nullptr;
 }
 
@@ -30,7 +35,11 @@ static void invokeMacosSwiftMain(void)
         static pthread_t swiftMainThread;
         pthread_mutex_init(&inMutex, 0);
         pthread_mutex_init(&outMutex, 0);
+        pthread_mutex_lock(&inMutex);
         pthread_mutex_lock(&outMutex);
+        // We don't really run "two threads". We use additional thread to keep
+        // the stack. makecontext / swapcontext doesn't really work with Objective-C / Swift
+        // runtime, and I got some strange errors.
         pthread_create(&swiftMainThread, 0, macosSwiftMainWrapper, 0);
         pthreadCreated = true;
     } else {
