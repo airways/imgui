@@ -5,18 +5,19 @@
 #include "imgui.h"
 #include "imgui_impl_osx.h"
 #include "imgui_impl_metal.h"
-#include "runtime.h"
+#include "common.h"
 
 static pthread_mutex_t inMutex;
 static pthread_mutex_t outMutex;
 
-void macosResume(void)
+void commonResume(void)
 {
     pthread_mutex_unlock(&outMutex);
     pthread_mutex_lock(&inMutex);
 }
 
 extern "C" void Gui_Do(void);
+extern "C" void macosSwiftMain(void);
 
 static void* macosSwiftMainWrapper(void* userdata)
 {

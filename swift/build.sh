@@ -1,7 +1,21 @@
+#!/usr/bin/env bash
+
 SOURCE="${BASH_SOURCE[0]}"
 DIR=`dirname ${SOURCE}`
-make -C ${DIR}
+UNAME_S=`uname -s`
+
 make Gui -C ${DIR}
-set -x
-${DIR}/assemble.sh $1.o $1.swift
-swiftc -o $1 $1.o ${DIR}/Gui.o -limgui_macos -I"${DIR}" -L"${DIR}" -framework CoreFoundation -framework Cocoa -framework Metal -framework MetalKit -lc++
+
+if [ "${UNAME_S}" = "Darwin" ]; then
+  make macos -C ${DIR}
+  set -x
+  ${DIR}/assemble.sh $1.o $1.swift
+  swiftc -o $1 $1.o ${DIR}/Gui.o -limgui_macos -I"${DIR}" -L"${DIR}" -framework CoreFoundation -framework Cocoa -framework Metal -framework MetalKit -lc++
+fi
+
+if [ "${UNAME_S}" = "Linux" ]; then
+  make linux -C ${DIR}
+  set -x
+  ${DIR}/assemble.sh $1.o $1.swift
+  swiftc -o $1 $1.o ${DIR}/Gui.o -limgui_linux -I"${DIR}" -L"${DIR}" -lstdc++ -lpthread -lGL `pkg-config --static --libs glfw3`
+fi

@@ -185,6 +185,6 @@ public func Do() {
     Viewport.renderAll()
     Viewport.drainEvents()
   }
-  macosResume()
+  commonResume()
   ThisTick.rendered = false
 }
