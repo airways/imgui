@@ -11,6 +11,7 @@ if [ "${UNAME_S}" = "Darwin" ]; then
   set -x
   ${DIR}/assemble.sh $1.o $1.swift
   swiftc -o $1 $1.o ${DIR}/Gui.o -limgui_macos -I"${DIR}" -L"${DIR}" -framework CoreFoundation -framework Cocoa -framework Metal -framework MetalKit -lc++
+  sed 's/EXECUTABLE\_NAME/main/g' ${DIR}/macos/Info.plist > `dirname $1`/Info.plist
 fi
 
 if [ "${UNAME_S}" = "Linux" ]; then
