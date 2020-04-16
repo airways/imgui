@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 SOURCE="${BASH_SOURCE[0]}"
 DIR=`dirname ${SOURCE}`
