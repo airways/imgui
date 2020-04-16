@@ -1,20 +1,20 @@
 import Gui
 
-let panel = Panel("First Window")
-let button = Button("Click me")
-let text = Text("Some Text")
+let panel = Panel(title: "First Window")
+let button = Button(title: "Click me")
+let text = Text(text: "Some Text")
 panel.add(subview: button)
 panel.add(subview: text)
-let childPanel = Panel("Child Panel")
-let childText = TextInput("Text")
+let childPanel = Panel(title: "Child Panel")
+let childText = TextInput(title: "Text")
 childText.multiline = true
 childPanel.add(subview: childText)
 panel.add(subview: childPanel)
 
 // This is the event-driven style.
 button.onClick = {
-  let panel = Panel("Second Window")
-  let text = Text("Some Text")
+  let panel = Panel(title: "Second Window")
+  let text = Text(text: "Some Text")
   panel.add(subview: text)
   text.text = childText.text
   childText.onTextChange = {

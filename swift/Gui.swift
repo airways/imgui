@@ -1,23 +1,22 @@
 
-public protocol View {
-  var viewID: Int { get }
-  func render()
-}
-
-func obtainViewID() -> Int {
-  struct ViewIDLot {
-    static var viewID = 0
+public class View {
+  static var globalID = 0
+  let viewID: Int
+  init() {
+    View.globalID += 1
+    self.viewID = View.globalID
   }
-  ViewIDLot.viewID += 1
-  return ViewIDLot.viewID
+  func render() {
+    fatalError("subclass needs to implement render()")
+  }
 }
 
 public struct Size {
-  public let x: Float
-  public let y: Float
-  public init(_ x: Float, _ y: Float) {
-    self.x = x
-    self.y = y
+  public let width: Float
+  public let height: Float
+  public init(width: Float, height: Float) {
+    self.width = width
+    self.height = height
   }
 }
 
@@ -50,8 +49,7 @@ class Viewport {
   }
 }
 
-public class Panel: View {
-
+public class ContainerView: View {
   private var subviews: [View] = []
   public func add(subview: View) {
     if let panel = subview as? Panel {
@@ -67,17 +65,18 @@ public class Panel: View {
       subview.render()
     }
   }
+  weak var parent: ContainerView?
+}
 
-  public let viewID: Int = obtainViewID()
+public class Panel: ContainerView {
   public var title: String
   public var size: Size
-  public init(_ title: String, size: Size = Size(0, 0)) {
+  public init(title: String, size: Size = Size(width: 0, height: 0)) {
     self.title = title
     self.size = size
+    super.init()
     Viewport.add(panel: self)
   }
-
-  weak var parent: Panel?
 
   public func destroy() {
     if let parent = parent {
@@ -87,10 +86,10 @@ public class Panel: View {
     }
   }
 
-  public func render() {
+  override func render() {
     igPushIDInt(Int32(viewID))
     if parent != nil {
-      igBeginChildStr(title, ImVec2(x: size.x, y: size.y), false, 0)
+      igBeginChildStr(title, ImVec2(x: size.width, y: size.height), false, 0)
     } else {
       igBegin(title, nil, 0)
     }
@@ -105,19 +104,18 @@ public class Panel: View {
 }
 
 public class Button: View {
-  public let viewID: Int = obtainViewID()
   public var title: String
   public var size: Size
   public private(set) var didClick: Bool = false
   public var onClick: (() -> Void)?
-  public init(_ title: String, size: Size = Size(0, 0)) {
+  public init(title: String, size: Size = Size(width: 0, height: 0)) {
     self.title = title
     self.size = size
   }
 
-  public func render() {
+  override func render() {
     igPushIDInt(Int32(viewID))
-    didClick = igButton(title, ImVec2(x: size.x, y: size.y))
+    didClick = igButton(title, ImVec2(x: size.width, y: size.height))
     igPopID()
     if didClick, let onClick = onClick {
       Viewport.add(event: onClick)
@@ -126,13 +124,12 @@ public class Button: View {
 }
 
 public class Text: View {
-  public let viewID: Int = obtainViewID()
   public var text: String
-  public init(_ text: String) {
+  public init(text: String) {
     self.text = text
   }
 
-  public func render() {
+  override func render() {
     igPushIDInt(Int32(viewID))
     igTextUnformatted(text, nil)
     igPopID()
@@ -140,14 +137,13 @@ public class Text: View {
 }
 
 public class TextInput: View {
-  public let viewID: Int = obtainViewID()
   public var title: String
   public var multiline: Bool = false
   public var size: Size
   public var text: String { String(cString: textDataStr(textData)) }
   public private(set) var didTextChange: Bool = false
   public var onTextChange: (() -> Void)?
-  public init(_ title:String, size: Size = Size(0, 0)) {
+  public init(title: String, size: Size = Size(width: 0, height: 0)) {
     self.title = title
     self.size = size
   }
@@ -157,13 +153,13 @@ public class TextInput: View {
     guard let textData = textData else { return }
     deinitTextData(textData)
   }
-  public func render() {
+  override func render() {
     igPushIDInt(Int32(viewID))
     if textData == nil {
       textData = initTextData()
     }
     if multiline {
-      igtxInputTextMultiline(title, textData, ImVec2(x: size.x, y: size.y), 0)
+      igtxInputTextMultiline(title, textData, ImVec2(x: size.width, y: size.height), 0)
     } else {
       igtxInputText(title, textData, 0)
     }
