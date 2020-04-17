@@ -20,7 +20,7 @@ fi
 if [ "${UNAME_S}" = "Linux" ]; then
   make linux -C ${DIR}
   set -x
-  ${DIR}/assemble.sh $NAME.o $1.swift
+  ${DIR}/assemble.sh $NAME.o $1
   swiftc -o $NAME $NAME.o ${DIR}/Gui.o -limgui_linux -I"${DIR}" -L"${DIR}" -lstdc++ -lpthread -lGL `pkg-config --static --libs glfw3`
   set +x
 fi
